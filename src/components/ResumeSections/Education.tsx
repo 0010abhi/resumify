@@ -9,10 +9,10 @@ export default function ResumeEducation({ education }: { education: any[] }) {
             <SectionTitle title="Education" />
             {education.map((edu: any, index: number) => (
                 <div key={index} className="flex flex-col mb-2">
-                    <TextInput name="degree" label="Degree" value={edu.degree} onChange={() => { }} />
-                    <TextInput name="school" label="School" value={edu.school} onChange={() => { }} />
-                    <DateRange name="year" start={edu.startDate} end={edu.endDate} onChange={() => { }} />
-                    <TextArea name="details" label="Details" value={edu.details} onChange={() => { }} />
+                    <TextInput name="degree" label="Degree" value={edu.degree}/>
+                    <TextInput name="school" label="School" value={edu.school} />
+                    <DateRange name="year" start={edu.startDate} end={edu.endDate} />
+                    <TextArea name="details" label="Details" value={edu.details} />
                 </div>
             ))}
         </div>

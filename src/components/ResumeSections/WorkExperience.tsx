@@ -9,10 +9,10 @@ export default function ResumeWorkExperience({ workExperience }: { workExperienc
             <SectionTitle title="Work Experience" />
             {workExperience.map((job: any, index: number) => (
                 <div key={index} className="flex flex-col mb-2">
-                    <TextInput name="title" label="Title" value={job.title} onChange={() => { }} />
-                    <TextInput name="company" label="Company" value={job.company} onChange={() => { }} />
-                    <DateRange name="duration" start={job.start} end={job.endDate} onChange={() => { }} />
-                    <TextArea name="responsibilities" label="Responsibilities" value={job.responsibilities} onChange={() => { }} />
+                    <TextInput name="title" label="Title" value={job.title} />
+                    <TextInput name="company" label="Company" value={job.company} />
+                    <DateRange name="duration" start={job.start} end={job.endDate} />
+                    <TextArea name="responsibilities" label="Responsibilities" value={job.responsibilities} />
                 </div>
             ))}
         </div>
