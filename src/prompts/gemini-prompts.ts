@@ -32,30 +32,16 @@ const geminiPrompts: any = {
                             achievements: ['*']
                             }}` 
     },
-    "suggestStrategy": `
-        I am actively applying for jobs, and my last working day was 31 Dec 2025. 
-        As you know, my development profile, I am half there and want to get a job 
-        as early as possible for senior roles 
-        like - Senior Frontend Developer, 
-            Full Stack Engineer, 
-            Senior Full Stack Engineer, 
-            Staff Software Engineer.
-        I am mostly applying through 
-            LinkedIn Easy Apply, 
-            at their Direct career page using LinkedIn Apply, 
-            Wellfound, 
-            Naukri, 
-            Few Remote portals (Turing, Crossover, Arc Dev, etc. ), 
-            Cutshort. 
-        I am also providing a current resume. 
-        Suggest to me any changes if needed and why. 
-        Give me more about 
-            job hunting strategy,
-            salary negotiation,
-            behavioral interview and 
-            must have mental model for senior position. 
-        Give me back output resume in pdf by updating suggested changes. 
-        Complete PDF Notebook for all topics asked more about.
+    "suggestStrategy": `I am actively looking for a job.
+    Currently, I am not working since 31 Dec 2025.
+    As you know, my development profile, I am preparing for last 30 days to get a job.
+    I am inclined towards roles like Senior Frontend Developer, Full Stack Engineer, Senior Full Stack Engineer, Staff Software Engineer.
+    I am mostly applying through LinkedIn Easy Apply & Apply Buttons, but also using other platforms like Wellfound, Naukri, Few Remote portals (Turing, Crossover, Arc Dev, etc. ), Cutshort.
+    You already have my current resume.
+    So Suggest me any changes if needed and why?
+    Give me more about job hunting strategy, salary negotiation, behavioral interview and must have mental model for senior position.
+    Give me back output resume in pdf by updating suggested changes.
+    Complete PDF Notebook for all topics asked more about.
     `
 };
 

@@ -19,12 +19,6 @@ function PDFDownloader({ data }: any){
       >
         Download PDF
       </button>
-      <button 
-        onClick={handleStrategy}
-        className="bg-blue-600 text-white px-4 py-2 rounded print:hidden"
-      >
-        Suggest Strategy
-      </button>
 
       {/* THE CONTENT: Attach 'printRef' via the ref prop and add a CLASS for CSS to find */}
       <div 

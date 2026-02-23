@@ -62,19 +62,20 @@ export default function useLinkedInParser(data: any, type = "parseResume") {
     async function handleStrategy() {
         if (data == null) return;
         const contents = [
-            { text: geminiPrompts[type]?.text },
-            {
-                inlineData: {
-                    mimeType: 'application/json',
-                    data: JSON.stringify(data)
-                }
-            }
+            { text: geminiPrompts[type] },
+            // {
+            //     inlineData: {
+            //         mimeType: 'application/json',
+            //         data: JSON.stringify(data)
+            //     }
+            // }
         ];
         const response: any = await ai.models.generateContent({
             model: "gemini-2.5-flash",
             contents: contents
         });
-        setStrategy(response);
+        console.log("Strategy response:", response);
+        setStrategy(response?.candidates[0].content.parts[0].text.trim());
     }
 
     useEffect(() => {
