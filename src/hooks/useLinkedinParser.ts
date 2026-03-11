@@ -7,7 +7,9 @@ const ai = new GoogleGenAI({ apiKey: GOOGLE_AI_API_KEY! });
 
 export default function useLinkedInParser(data: any, type = "parseResume") {
     const [parseResume, setParseResume] = useState<any>(null);
-    const [strategy, setStrategy] = useState<any>(null);
+    // const [strategy, setStrategy] = useState<any>(null);
+    const [strategy, setStrategy] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
 
     async function generateParsedData() {
         if (data == null) return;
@@ -61,6 +63,19 @@ export default function useLinkedInParser(data: any, type = "parseResume") {
 
     async function handleStrategy() {
         if (data == null) return;
+        // const response: any = await ai.models.generateContent({
+        //     model: "gemini-2.5-flash",
+        //     contents: contents
+        // });
+        // console.log("Strategy response:", response);
+        // setStrategy(response?.candidates[0].content.parts[0].text.trim());
+        generateStrategy();
+
+    }
+
+    const generateStrategy = async () => {
+        setStrategy(""); // Clear previous content
+        setIsLoading(true);
         const contents = [
             { text: geminiPrompts[type] },
             // {
@@ -70,13 +85,27 @@ export default function useLinkedInParser(data: any, type = "parseResume") {
             //     }
             // }
         ];
-        const response: any = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: contents
-        });
-        console.log("Strategy response:", response);
-        setStrategy(response?.candidates[0].content.parts[0].text.trim());
-    }
+
+        try {
+            // 1. Use generateContentStream instead of generateContent
+            const result = await ai.models.generateContentStream({
+                model: "gemini-2.5-flash", // Use your specific model version
+                contents: contents
+            });
+
+            // 2. Iterate through the stream
+            for await (const chunk of result.stream) {
+                const chunkText = chunk.text();
+
+                // 3. Append chunk to state using functional update
+                setStrategy((prev: any) => prev + chunkText);
+            }
+        } catch (error) {
+            console.error("Streaming error:", error);
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     useEffect(() => {
         if (data && type === "parseResume") {

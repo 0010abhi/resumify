@@ -19,7 +19,6 @@ function PDFDownloader({ data }: any){
       >
         Download PDF
       </button>
-
       {/* THE CONTENT: Attach 'printRef' via the ref prop and add a CLASS for CSS to find */}
       <div 
         ref={printRef} 

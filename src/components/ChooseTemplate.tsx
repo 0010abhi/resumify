@@ -1,6 +1,7 @@
 import { useState } from "react";
 import TemplateOne from "./TemplateOne";
 import TemplateTwo from "./TemplateTwo";
+import ReactMarkdown from 'react-markdown';
 
 export default function ChooseTemplate({ data }: { data: any }) {
     const [selectedTemplate, setSelectedTemplate] = useState<string>("template1");
@@ -49,6 +50,13 @@ export default function ChooseTemplate({ data }: { data: any }) {
             <div className="flex scroll-auto">
                 {renderTemplate()}
             </div>
+
+                <div>
+      {/* <button onClick={handleStream}>Start Generation</button> */}
+      <div className="markdown-container">
+        <ReactMarkdown>{data}</ReactMarkdown>
+      </div>
+    </div>
 
         </div>
     );

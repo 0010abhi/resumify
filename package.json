@@ -1,6 +1,6 @@
 {
-  "homepage": "https://0010abhi.github.io/linkedin-resume-parser",
-  "name": "linkedin-resume-parser",
+  "homepage": "https://0010abhi.github.io/resumify",
+  "name": "resumify",
   "private": true,
   "version": "0.0.0",
   "type": "module",
