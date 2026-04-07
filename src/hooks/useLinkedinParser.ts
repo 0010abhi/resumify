@@ -88,7 +88,7 @@ export default function useLinkedInParser(data: any, type = "parseResume") {
 
         try {
             // 1. Use generateContentStream instead of generateContent
-            const result = await ai.models.generateContentStream({
+            const result: any = await ai.models.generateContentStream({
                 model: "gemini-2.5-flash", // Use your specific model version
                 contents: contents
             });
