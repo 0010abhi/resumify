@@ -53,9 +53,9 @@ export default function ChooseTemplate({ data }: { data: any }) {
 
                 <div>
       {/* <button onClick={handleStream}>Start Generation</button> */}
-      <div className="markdown-container">
-        <ReactMarkdown>{data}</ReactMarkdown>
-      </div>
+            <div className="markdown-container">
+                <ReactMarkdown>{typeof data === 'string' ? data : ''}</ReactMarkdown>
+            </div>
     </div>
 
         </div>

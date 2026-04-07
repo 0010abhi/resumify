@@ -37,13 +37,13 @@ export default function ResumePreviewTwo({ data }: { data: any }) {
                                 <div className="text-xl text-stone-800">{edu.degree}</div>
                                 <p className="text-sm text-gray-450 mb-1">{edu.school} | {edu.year}</p>
                             </div>
-                            {edu.description && <div className='text-base font-sans'>
+                            {/* {edu.description && <div className='text-base font-sans'>
                                 <ul className='list-disc ml-4'>
                                     {edu.description.map((resp: string, respIndex: number) => (
                                         <li className='mt-1/2' key={respIndex}>{resp}</li>
                                     ))}
                                 </ul>
-                            </div>}
+                            </div>} */}
                         </div>
 
 
