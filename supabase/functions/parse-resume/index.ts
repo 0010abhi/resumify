@@ -2,38 +2,8 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { generateWithRetry } from "../_shared/gemini.ts";
 import { createUserClient, supabaseAdmin } from "../_shared/supabase-admin.ts";
 import { checkRateLimit } from "../_shared/rate-limit.ts";
-
-const PARSE_RESUME_PROMPT = `Parse the following Linkedin resume and extract the
-name, email, phone number, skills, experience and education in json object like
-{
-    data: {
-        name: 'John Doe',
-        email: 'john.doe@example.com',
-        phone: '+1234567890',
-        skills: ['JavaScript', 'React'],
-        links: [{
-            type: 'LinkedIn',
-            url: 'https://www.linkedin.com/in/johndoe'
-        }],
-        professionalSummary: '*',
-        experience: [{
-            title: 'Software Engineer',
-            company: 'ABC Corp',
-            duration: '2020 - Present',
-            start: 'mm-yyyy',
-            end: 'mm-yyyy',
-            responsibilities: ['*']
-            }],
-        education: [{
-            degree: 'B.S. Computer Science',
-            school: 'XYZ University',
-            duration: '2016 - 2020',
-            start: 'mm-yyyy',
-            end: 'mm-yyyy',
-            description: '*'
-        }],
-        achievements: ['*']
-        }}`;
+import { STORAGE_BUCKET, TEMP_PATH_PREFIX } from "../_shared/constants.ts";
+import { PARSE_RESUME_PROMPT } from "../_shared/prompts/resume.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -91,11 +61,11 @@ Deno.serve(async (req: Request) => {
 
     // 2. Upload original PDF to temp storage
     const tempId = crypto.randomUUID();
-    const storagePath = `temp/${tempId}.pdf`;
+    const storagePath = `${TEMP_PATH_PREFIX}${tempId}.pdf`;
     const pdfBytes = Uint8Array.from(atob(pdfBase64), (c) => c.charCodeAt(0));
 
     const { error: storageError } = await supabaseAdmin.storage
-      .from("resume-pdfs")
+      .from(STORAGE_BUCKET)
       .upload(storagePath, pdfBytes, { contentType: "application/pdf" });
 
     if (storageError) {
@@ -117,7 +87,7 @@ Deno.serve(async (req: Request) => {
     if (dbError) {
       console.error("temp_resumes insert failed:", dbError.message);
       // Clean up the uploaded file
-      await supabaseAdmin.storage.from("resume-pdfs").remove([storagePath]);
+      await supabaseAdmin.storage.from(STORAGE_BUCKET).remove([storagePath]);
       return new Response(JSON.stringify(parsedData), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

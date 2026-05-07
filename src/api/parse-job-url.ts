@@ -1,12 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 import * as Sentry from "@sentry/react";
 import { callEdgeFunction } from "../lib/supabase";
+import { GEMINI_MODEL, EDGE_FN } from "../lib/constants";
 
 const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === "true";
 
 // Only used when VITE_USE_BACKEND is false (local dev without Supabase)
 const GOOGLE_AI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API_KEY;
-const ai = USE_BACKEND ? null : new GoogleGenAI({ apiKey: GOOGLE_AI_API_KEY! });
+const ai = USE_BACKEND || !GOOGLE_AI_API_KEY ? null : new GoogleGenAI({ apiKey: GOOGLE_AI_API_KEY });
 
 export default async function ParseJobUrl(
     link = "https://careers.bitfinex.com/o/mobile-developer-react-native-100-remote-worldwide-11"
@@ -17,7 +18,7 @@ export default async function ParseJobUrl(
     });
 
     if (USE_BACKEND) {
-        return callEdgeFunction("parse-job", { url: link });
+        return callEdgeFunction(EDGE_FN.PARSE_JOB, { url: link });
     }
 
     const prompt = `You are given a LinkedIn job posting URL: ${link}.
@@ -42,7 +43,7 @@ Example output:
 }`;
 
     const response: any = await ai!.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: GEMINI_MODEL,
         contents: [{ text: prompt }],
     });
 

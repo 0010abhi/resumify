@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { supabase, callEdgeFunction } from "../../lib/supabase";
+import { EDGE_FN } from "../../lib/constants";
 
 export default function CallbackPage() {
   const navigate = useNavigate();
@@ -20,11 +21,11 @@ export default function CallbackPage() {
           let resumeId: string;
           if (tempId) {
             // Fast path: resume already stored server-side, just claim it
-            const result = await callEdgeFunction("claim-resume", { tempId });
+            const result = await callEdgeFunction(EDGE_FN.CLAIM_RESUME, { tempId });
             resumeId = result.resume_id;
           } else {
             // Fallback: storage failed during parse, upload now
-            const result = await callEdgeFunction("upload-resume", { pdfBase64, fileName });
+            const result = await callEdgeFunction(EDGE_FN.UPLOAD_RESUME, { pdfBase64, fileName });
             resumeId = result.resume_id;
           }
           navigate({ to: "/resume/$resumeId", params: { resumeId } });

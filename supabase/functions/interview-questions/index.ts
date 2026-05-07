@@ -1,50 +1,8 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { ai, GEMINI_MODEL } from "../_shared/gemini.ts";
 import { createUserClient, supabaseAdmin, ensureProfile } from "../_shared/supabase-admin.ts";
-
-function buildPrompt(resume: any, job: any | null): string {
-  const d = resume?.data ?? resume;
-
-  const experienceText = (d.experience ?? [])
-    .map((e: any) =>
-      `${e.title} at ${e.company} (${e.start ?? ""}–${e.end ?? ""}): ${(e.responsibilities ?? []).join("; ")}`
-    )
-    .join("\n");
-
-  const jobContext = job
-    ? `Target job: ${job.job_title ?? ""} at ${job.company_name ?? ""}
-Requirements: ${[...(job.primary_skills?.value ?? []), ...(job.secondary_skills?.value ?? [])].join(", ")}
-Responsibilities: ${(job.key_responsibilities?.value ?? []).join("; ")}`
-    : "No specific job provided — generate general interview questions based on the candidate's profile.";
-
-  return `Generate 10 interview questions for this candidate.
-- 5 behavioral questions (STAR method framework)
-- 5 technical questions specific to their skills and the role
-
-Candidate summary:
-Name: ${d.name ?? ""}
-Skills: ${(d.skills ?? []).join(", ")}
-Experience:
-${experienceText}
-
-${jobContext}
-
-Return ONLY a JSON array (no markdown, no explanation):
-[
-  {
-    "type": "behavioral",
-    "question": "Tell me about a time when...",
-    "hints": ["Focus on X", "Mention Y"],
-    "focus_area": "leadership"
-  },
-  {
-    "type": "technical",
-    "question": "How would you...",
-    "hints": ["Consider X", "Think about Y"],
-    "focus_area": "React performance"
-  }
-]`;
-}
+import { THINKING_BUDGET } from "../_shared/constants.ts";
+import { buildInterviewPrompt } from "../_shared/prompts/interview.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -107,13 +65,13 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const prompt = buildPrompt(resumeRow.parsed_data, jobData);
+    const prompt = buildInterviewPrompt(resumeRow.parsed_data, jobData);
 
     // Use Gemini with thinking for higher quality questions
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: { thinkingConfig: { thinkingBudget: 8000 } },
+      config: { thinkingConfig: { thinkingBudget: THINKING_BUDGET } },
     });
 
     const raw = response.candidates?.[0]?.content?.parts?.[0]?.text ?? "[]";

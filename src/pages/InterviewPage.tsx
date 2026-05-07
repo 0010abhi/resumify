@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "@tanstack/react-router";
 import { supabase, callEdgeFunction } from "../lib/supabase";
+import { EDGE_FN } from "../lib/constants";
 
 interface Question {
   type: "behavioral" | "technical";
@@ -82,7 +83,7 @@ export default function InterviewPage() {
     try {
       const body: Record<string, string> = { resumeId };
       if (selectedJobId) body.jobId = selectedJobId;
-      const data = await callEdgeFunction("interview-questions", body);
+      const data = await callEdgeFunction(EDGE_FN.INTERVIEW_QUESTIONS, body);
       setQuestions(data.questions ?? []);
     } catch (err: any) {
       setError(err.message ?? "Generation failed.");

@@ -1,42 +1,21 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { generateWithRetry, generateEmbedding } from "../_shared/gemini.ts";
 import { createUserClient, supabaseAdmin, ensureProfile } from "../_shared/supabase-admin.ts";
+import { RAG_CHUNKS_PER_QUERY, RAG_TOP_CHUNKS } from "../_shared/constants.ts";
+import { buildMatchPrompt, buildRagMatchPrompt } from "../_shared/prompts/match.ts";
+import { buildJobParsePrompt } from "../_shared/prompts/job.ts";
 
-const MATCH_PROMPT = (resume: object, job: object) =>
-  `Score how well this candidate matches this job posting.
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-Resume data:
-${JSON.stringify(resume, null, 2)}
+interface RetrievedChunk {
+  chunk_text: string;
+  chunk_index: number;
+  metadata: { section?: string; [key: string]: unknown };
+  similarity: number;
+  section: string;
+}
 
-Job posting data:
-${JSON.stringify(job, null, 2)}
-
-Return ONLY a JSON object (no markdown):
-{
-  "score": <0-100 overall match>,
-  "breakdown": {
-    "technical_skills": <0-100>,
-    "experience": <0-100>,
-    "domain_match": <0-100>,
-    "role_level": <0-100>
-  },
-  "analysis": "<2-3 sentence explanation highlighting strengths and gaps>"
-}`;
-
-const JOB_PARSE_PROMPT = (url: string) =>
-  `Extract information from this job posting URL: ${url}
-
-Return ONLY a JSON object (no markdown):
-{
-  "job_title": "<title>",
-  "company_name": "<company>",
-  "job_description": { "value": "<summary>", "type": "string" },
-  "primary_skills": { "value": ["..."], "type": "string[]" },
-  "secondary_skills": { "value": ["..."], "type": "string[]" },
-  "years_experience": { "value": <number or null>, "type": "number" },
-  "key_responsibilities": { "value": ["..."], "type": "string[]" },
-  "key_qualifications": { "value": ["..."], "type": "string[]" }
-}`;
+// ─── Resume chunking ──────────────────────────────────────────────────────────
 
 function chunkResume(parsed: any): { text: string; metadata: object }[] {
   const d = parsed?.data ?? parsed;
@@ -64,69 +43,121 @@ function chunkResume(parsed: any): { text: string; metadata: object }[] {
   if (achievements.length) {
     chunks.push({ text: achievements.join(" "), metadata: { section: "achievements" } });
   }
-console.log("Chunked resume data:", chunks);
-  return chunks;
-}
-
-function chunkJob(parsed: any): { text: string; metadata: object }[] {
-  const chunks: { text: string; metadata: object }[] = [];
-
-  if (parsed.job_description?.value) {
-    chunks.push({ text: parsed.job_description.value, metadata: { section: "description" } });
-  }
-
-  const skills = [
-    ...(parsed.primary_skills?.value ?? []),
-    ...(parsed.secondary_skills?.value ?? []),
-  ].filter(Boolean);
-  if (skills.length) {
-    chunks.push({ text: skills.join(", "), metadata: { section: "skills" } });
-  }
-
-  if (parsed.key_responsibilities?.value?.length) {
-    chunks.push({ text: parsed.key_responsibilities.value.join(" "), metadata: { section: "responsibilities" } });
-  }
-
-  if (parsed.key_qualifications?.value?.length) {
-    chunks.push({ text: parsed.key_qualifications.value.join(" "), metadata: { section: "qualifications" } });
-  }
-
-  console.log("Chunked job data:", chunks);
 
   return chunks;
 }
 
-async function upsertEmbeddings(
-  sourceType: "resume" | "job",
-  sourceId: string,
-  chunks: { text: string; metadata: object }[]
-): Promise<void> {
-  console.log(`Upserting ${chunks.length} embeddings for ${sourceType} ${sourceId}`);
-  
+// ─── RAG helpers ──────────────────────────────────────────────────────────────
+
+async function upsertResumeEmbeddings(resumeId: string, parsed: any): Promise<void> {
+  const { count } = await supabaseAdmin
+    .from("embeddings")
+    .select("id", { count: "exact", head: true })
+    .eq("source_type", "resume")
+    .eq("source_id", resumeId);
+
+  if (count && count > 0) return;
+
   await supabaseAdmin
     .from("embeddings")
     .delete()
-    .eq("source_type", sourceType)
-    .eq("source_id", sourceId);
+    .eq("source_type", "resume")
+    .eq("source_id", resumeId);
 
+  const chunks = chunkResume(parsed);
   const rows = [];
   for (let i = 0; i < chunks.length; i++) {
-    console.log("Sample chunk:", chunks[i]);
     const values = await generateEmbedding(chunks[i].text);
     rows.push({
-      source_type: sourceType,
-      source_id: sourceId,
+      source_type: "resume",
+      source_id: resumeId,
       chunk_index: i,
       chunk_text: chunks[i].text,
       embedding: `[${values.join(",")}]`,
       metadata: chunks[i].metadata,
     });
   }
-
-  if (rows.length) {
-    await supabaseAdmin.from("embeddings").insert(rows);
-  }
+  if (rows.length) await supabaseAdmin.from("embeddings").insert(rows);
 }
+
+async function retrieveRelevantChunks(resumeId: string, jobParsed: any): Promise<RetrievedChunk[]> {
+  // Build one query text per job aspect to cover different dimensions of the role
+  const queries = [
+    jobParsed.job_description?.value,
+    (jobParsed.primary_skills?.value ?? []).join(", "),
+    (jobParsed.key_responsibilities?.value ?? []).join(" "),
+    (jobParsed.key_qualifications?.value ?? []).join(" "),
+  ].filter(Boolean);
+
+  // Deduplicate by chunk_index, keeping the highest similarity seen across all queries
+  const chunkMap = new Map<number, RetrievedChunk>();
+
+  for (const queryText of queries) {
+    const queryEmbedding = await generateEmbedding(queryText);
+    const { data: chunks } = await supabaseAdmin.rpc("match_embeddings", {
+      query_embedding: `[${queryEmbedding.join(",")}]`,
+      source_type_filter: "resume",
+      source_id_filter: resumeId,
+      match_count: RAG_CHUNKS_PER_QUERY,
+    });
+
+    for (const chunk of chunks ?? []) {
+      const existing = chunkMap.get(chunk.chunk_index);
+      if (!existing || existing.similarity < chunk.similarity) {
+        chunkMap.set(chunk.chunk_index, {
+          ...chunk,
+          section: chunk.metadata?.section ?? "unknown",
+        });
+      }
+    }
+  }
+
+  return Array.from(chunkMap.values())
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, RAG_TOP_CHUNKS);
+}
+
+// ─── Job cache ────────────────────────────────────────────────────────────────
+
+async function fetchOrParseJob(jobUrl: string): Promise<{ jobId: string; jobParsedData: any }> {
+  const { data: existingJob } = await supabaseAdmin
+    .from("jobs")
+    .select("id, parsed_data")
+    .eq("source_url", jobUrl)
+    .maybeSingle();
+
+  if (existingJob) {
+    return { jobId: existingJob.id, jobParsedData: existingJob.parsed_data };
+  }
+
+  const raw = await generateWithRetry([{ text: buildJobParsePrompt(jobUrl) }]);
+  const jobParsedData = JSON.parse(raw.replace(/```json|```/g, "").trim());
+  const jobId = crypto.randomUUID();
+
+  const { error: insertError } = await supabaseAdmin.from("jobs").insert({
+    id: jobId,
+    source_url: jobUrl,
+    parsed_data: jobParsedData,
+    job_title: jobParsedData.job_title ?? null,
+    company_name: jobParsedData.company_name ?? null,
+  });
+
+  if (insertError) {
+    if (insertError.code === "23505") {
+      const { data: raceJob } = await supabaseAdmin
+        .from("jobs")
+        .select("id, parsed_data")
+        .eq("source_url", jobUrl)
+        .single();
+      return { jobId: raceJob!.id, jobParsedData: raceJob!.parsed_data };
+    }
+    throw new Error(`Job insert failed: ${insertError.message}`);
+  }
+
+  return { jobId, jobParsedData };
+}
+
+// ─── Handler ──────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -153,7 +184,7 @@ Deno.serve(async (req: Request) => {
 
     await ensureProfile(user.id, user.email ?? "");
 
-    const { resumeId, jobUrl } = await req.json();
+    const { resumeId, jobUrl, mode = "gemini" } = await req.json();
     if (!resumeId || !jobUrl) {
       return new Response(JSON.stringify({ error: "resumeId and jobUrl are required" }), {
         status: 400,
@@ -176,74 +207,26 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // // 2. Check job cache by URL
-    // let jobId: string;
-    // let jobParsedData: any;
-    // let jobIsNew = false;
+    // 2. Parse / fetch cached job
+    const { jobId, jobParsedData } = await fetchOrParseJob(jobUrl);
 
-    // const { data: existingJob } = await supabaseAdmin
-    //   .from("jobs")
-    //   .select("id, parsed_data")
-    //   .eq("source_url", jobUrl)
-    //   .maybeSingle();
+    // 3. Score — two paths depending on mode
+    let matchResult: any;
+    let retrievedChunks: RetrievedChunk[] | undefined;
 
-    // if (existingJob) {
-    //   jobId = existingJob.id;
-    //   jobParsedData = existingJob.parsed_data;
-    // } else {
-    //   const raw = await generateWithRetry([{ text: JOB_PARSE_PROMPT(jobUrl) }]);
-    //   jobParsedData = JSON.parse(raw.replace(/```json|```/g, "").trim());
-    //   console.log("Parsed job data:", jobParsedData);
-    //   jobId = crypto.randomUUID();
-    //   const { error: jobInsertError } = await supabaseAdmin.from("jobs").insert({
-    //     id: jobId,
-    //     source_url: jobUrl,
-    //     parsed_data: jobParsedData,
-    //     job_title: jobParsedData.job_title ?? null,
-    //     company_name: jobParsedData.company_name ?? null,
-    //   });
-
-    //   if (jobInsertError) {
-    //     // Race condition: another request inserted same URL — fetch it
-    //     if (jobInsertError.code === "23505") {
-    //       const { data: raceJob } = await supabaseAdmin
-    //         .from("jobs")
-    //         .select("id, parsed_data")
-    //         .eq("source_url", jobUrl)
-    //         .single();
-    //       jobId = raceJob!.id;
-    //       jobParsedData = raceJob!.parsed_data;
-    //     } else {
-    //       throw new Error(`Job insert failed: ${jobInsertError.message}`);
-    //     }
-    //   } else {
-    //     jobIsNew = true;
-    //   }
-    // }
-
-    // // 3. Embed job chunks if new
-    // if (jobIsNew) {
-    //   await upsertEmbeddings("job", jobId, chunkJob(jobParsedData));
-    // }
-
-    // 4. Embed resume chunks if not already done
-    const { count: resumeEmbedCount } = await supabaseAdmin
-      .from("embeddings")
-      .select("id", { count: "exact", head: true })
-      .eq("source_type", "resume")
-      .eq("source_id", resumeId);
-
-    if (!resumeEmbedCount) {
-      await upsertEmbeddings("resume", resumeId, chunkResume(resumeRow.parsed_data));
+    if (mode === "rag") {
+      // RAG: embed resume → retrieve relevant chunks → Gemini scores on focused context
+      await upsertResumeEmbeddings(resumeId, resumeRow.parsed_data);
+      retrievedChunks = await retrieveRelevantChunks(resumeId, jobParsedData);
+      const raw = await generateWithRetry([{ text: buildRagMatchPrompt(retrievedChunks, jobParsedData) }]);
+      matchResult = JSON.parse(raw.replace(/```json|```/g, "").trim());
+    } else {
+      // Gemini-only: pass full resume + job JSON directly
+      const raw = await generateWithRetry([{ text: buildMatchPrompt(resumeRow.parsed_data, jobParsedData) }]);
+      matchResult = JSON.parse(raw.replace(/```json|```/g, "").trim());
     }
 
-    // 5. Score with Gemini
-    const raw = await generateWithRetry([
-      { text: MATCH_PROMPT(resumeRow.parsed_data, jobParsedData) },
-    ]);
-    const matchResult = JSON.parse(raw.replace(/```json|```/g, "").trim());
-
-    // 6. Upsert into user_jobs
+    // 4. Upsert into user_jobs
     await supabaseAdmin.from("user_jobs").upsert(
       {
         user_id: user.id,
@@ -268,6 +251,14 @@ Deno.serve(async (req: Request) => {
           company: jobParsedData.company_name,
           url: jobUrl,
         },
+        mode,
+        ...(retrievedChunks && {
+          retrieved_chunks: retrievedChunks.map((c) => ({
+            chunk_text: c.chunk_text,
+            section: c.section,
+            similarity: c.similarity,
+          })),
+        }),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

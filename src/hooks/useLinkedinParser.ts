@@ -2,11 +2,12 @@ import { GoogleGenAI } from "@google/genai";
 import { useState, useEffect } from "react";
 import geminiPrompts from "../prompts/gemini-prompts";
 import { callEdgeFunction, RateLimitError } from "../lib/supabase";
+import { GEMINI_MODEL, EDGE_FN } from "../lib/constants";
 
 const USE_BACKEND = import.meta.env.VITE_USE_BACKEND === "true";
 
 const GOOGLE_AI_API_KEY = import.meta.env.VITE_GOOGLE_AI_API_KEY;
-const ai = USE_BACKEND ? null : new GoogleGenAI({ apiKey: GOOGLE_AI_API_KEY! });
+const ai = USE_BACKEND || !GOOGLE_AI_API_KEY ? null : new GoogleGenAI({ apiKey: GOOGLE_AI_API_KEY });
 
 export interface RateLimitState {
   message: string;
@@ -26,7 +27,7 @@ export default function useLinkedInParser(data: any, type = "parseResume") {
 
     if (USE_BACKEND) {
       try {
-        const result = await callEdgeFunction("parse-resume", { pdfBase64: data });
+        const result = await callEdgeFunction(EDGE_FN.PARSE_RESUME, { pdfBase64: data });
         const { tempId: tid, ...parsed } = result;
         if (tid) setTempId(tid);
         setParseResume(parsed);
@@ -45,7 +46,7 @@ export default function useLinkedInParser(data: any, type = "parseResume") {
       { inlineData: { mimeType: "application/pdf", data } },
     ];
     const response: any = await ai!.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents,
     });
     setParseResume(
@@ -63,7 +64,7 @@ export default function useLinkedInParser(data: any, type = "parseResume") {
     const contents = [{ text: geminiPrompts[type] }];
     try {
       const result: any = await ai!.models.generateContentStream({
-        model: "gemini-2.5-flash",
+        model: GEMINI_MODEL,
         contents,
       });
       for await (const chunk of result.stream) {

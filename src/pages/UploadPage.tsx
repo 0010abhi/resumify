@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import fileToGenerativePart from "../utitlity/fileToGenerativePart";
 import { callEdgeFunction } from "../lib/supabase";
+import { EDGE_FN } from "../lib/constants";
 import { useToast } from "../context/ToastContext";
 
 export default function UploadPage() {
@@ -16,7 +17,7 @@ export default function UploadPage() {
     setUploading(true);
     try {
       const { inlineData } = await fileToGenerativePart(file);
-      const result = await callEdgeFunction("upload-resume", {
+      const result = await callEdgeFunction(EDGE_FN.UPLOAD_RESUME, {
         pdfBase64: inlineData.data,
         fileName: file.name,
       });

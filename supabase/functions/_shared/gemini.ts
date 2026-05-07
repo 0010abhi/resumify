@@ -5,23 +5,17 @@ if (!apiKey) throw new Error("GOOGLE_AI_API_KEY environment variable is required
 
 export const ai = new GoogleGenAI({ apiKey });
 export const GEMINI_MODEL = "gemini-2.5-flash";
-export const EMBEDDING_MODEL = "text-embedding-004";
+// outputDimensionality truncates to 768 to stay compatible with the existing vector(768) schema.
+const EMBEDDING_MODEL = "gemini-embedding-2";
+const EMBEDDING_DIM = 768;
 
-// Direct REST call — the @google/genai SDK uses v1beta by default, but
-// text-embedding-004 embedContent is only available on the v1 stable endpoint.
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const url = `https://generativelanguage.googleapis.com/v1/models/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: `models/${EMBEDDING_MODEL}`, content: { parts: [{ text }] } }),
+  const response = await ai.models.embedContent({
+    model: EMBEDDING_MODEL,
+    contents: text,
+    config: { outputDimensionality: EMBEDDING_DIM },
   });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Embedding API error ${res.status}: ${err}`);
-  }
-  const data = await res.json();
-  return data.embedding?.values ?? [];
+  return response.embeddings?.[0]?.values ?? [];
 }
 
 export async function generateWithRetry(

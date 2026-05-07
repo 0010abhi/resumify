@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, Link } from "@tanstack/react-router";
 import { supabase, streamEdgeFunction } from "../lib/supabase";
+import { EDGE_FN } from "../lib/constants";
 
 interface JobOption {
   job_id: string;
@@ -87,7 +88,7 @@ export default function CareerPage() {
     try {
       const body: Record<string, string> = { resumeId };
       if (selectedJobId) body.jobId = selectedJobId;
-      await streamEdgeFunction("career-plan", body, (chunk) => {
+      await streamEdgeFunction(EDGE_FN.CAREER_PLAN, body, (chunk) => {
         setContent((prev) => prev + chunk);
       });
       setDone(true);

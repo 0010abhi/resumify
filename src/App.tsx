@@ -6,6 +6,7 @@ import useLinkedInParser from './hooks/useLinkedinParser';
 import ParseJobUrl from './api/parse-job-url';
 import { useAuth } from './hooks/useAuth';
 import { callEdgeFunction } from './lib/supabase';
+import { EDGE_FN } from './lib/constants';
 import { useNavigate } from '@tanstack/react-router';
 import * as Sentry from '@sentry/react';
 
@@ -100,10 +101,10 @@ function App() {
       sessionStorage.removeItem('pendingResume');
       if (tempId) {
         // File already on server — just claim it
-        callEdgeFunction('claim-resume', { tempId }).catch(console.error);
+        callEdgeFunction(EDGE_FN.CLAIM_RESUME, { tempId }).catch(console.error);
       } else if (fileData) {
         // Fallback: server-side upload failed, send raw PDF
-        callEdgeFunction('upload-resume', { pdfBase64: fileData, fileName }).catch(console.error);
+        callEdgeFunction(EDGE_FN.UPLOAD_RESUME, { pdfBase64: fileData, fileName }).catch(console.error);
       }
     }
   }, [parseResume, user, tempId, fileData, fileName]);

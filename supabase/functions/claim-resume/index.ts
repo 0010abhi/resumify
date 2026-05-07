@@ -1,5 +1,6 @@
 import { corsHeaders } from "../_shared/cors.ts";
 import { createUserClient, supabaseAdmin, ensureProfile } from "../_shared/supabase-admin.ts";
+import { STORAGE_BUCKET } from "../_shared/constants.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -55,7 +56,7 @@ Deno.serve(async (req: Request) => {
     const destPath = `${user.id}/${resumeId}.pdf`;
 
     const { error: moveError } = await supabaseAdmin.storage
-      .from("resume-pdfs")
+      .from(STORAGE_BUCKET)
       .move(tempRecord.storage_path, destPath);
 
     if (moveError) {
@@ -78,7 +79,7 @@ Deno.serve(async (req: Request) => {
     if (insertError) {
       console.error("resumes insert failed:", insertError.message);
       // Move file back to avoid orphan
-      await supabaseAdmin.storage.from("resume-pdfs").move(destPath, tempRecord.storage_path);
+      await supabaseAdmin.storage.from(STORAGE_BUCKET).move(destPath, tempRecord.storage_path);
       return new Response(JSON.stringify({ error: "Failed to save resume" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
