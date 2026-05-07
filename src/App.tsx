@@ -1,43 +1,28 @@
-import { useState } from 'react';
-import './App.css'
+import { useState, useEffect, useRef } from 'react';
+import './App.css';
 import ParseLinkedInResume from './components/ParseLinkedInResume';
 import ChooseTemplate from './components/ChooseTemplate';
 import useLinkedInParser from './hooks/useLinkedinParser';
-import ReactMarkdown from 'react-markdown';
 import ParseJobUrl from './api/parse-job-url';
-
-
-import * as Sentry from "@sentry/react";
+import { useAuth } from './hooks/useAuth';
+import { callEdgeFunction } from './lib/supabase';
+import { useNavigate } from '@tanstack/react-router';
+import * as Sentry from '@sentry/react';
 
 Sentry.init({
-  dsn: "https://9b7ab2c8547130a517f11eb4244d23bf@o4511177142173696.ingest.de.sentry.io/4511177361326160",
-  // Setting this option to true will send default PII data to Sentry.
-  // For example, automatic IP address collection on events
+  dsn: 'https://9b7ab2c8547130a517f11eb4244d23bf@o4511177142173696.ingest.de.sentry.io/4511177361326160',
   sendDefaultPii: true,
-  // Enable logs to be sent to Sentry
-  enableLogs: true
+  enableLogs: true,
 });
 
-const SalaryStrategy = ({ text }: { text: string }) => (
-  <div className="p-4 bg-gray-100 mt-4">
-    <ReactMarkdown>{text}</ReactMarkdown>
-  </div>
-);
-
 function ParseJobLink() {
-  const [jobLink, setJobLink] = useState<string>("");
+  const [jobLink, setJobLink] = useState('');
   const [jdResponse, setJdResponse] = useState<any>({});
 
   function jobLinkHandler() {
-    // Logic to handle job link submission
-    console.log("Job Link Submitted:", jobLink);
-    // const jobLinkUrl = new URL(jobLink);
-    ParseJobUrl(jobLink).then((response) => {
-      console.log("Parsed Job Data:", response);
-      setJdResponse(response);
-    }).catch((error) => {
-      console.error("Error parsing job link:", error);
-    });
+    ParseJobUrl(jobLink)
+      .then(setJdResponse)
+      .catch((error) => console.error('Error parsing job link:', error));
   }
 
   return (
@@ -50,16 +35,12 @@ function ParseJobLink() {
         placeholder="https://www.linkedin.com/jobs/view/1234567890/"
         className="border border-gray-300 rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
       />
-      <div
-        onClick={jobLinkHandler}
-        className="mt-2 bg-blue-600 text-white px-4 py-2 rounded"
-      >
+      <div onClick={jobLinkHandler} className="mt-2 bg-blue-600 text-white px-4 py-2 rounded cursor-pointer">
         Parse Job Link
       </div>
-      {jdResponse && <div>
-        {/* {JSON.stringify(jdResponse)} */}
-        {
-          Object.entries(jdResponse).map(([key, value]: [string, any]) => (
+      {jdResponse && (
+        <div>
+          {Object.entries(jdResponse).map(([key, value]: [string, any]) => (
             <div key={key} className="mt-4">
               <h3 className="text-lg font-semibold">{key} ({value.type})</h3>
               {value.value ? (
@@ -76,42 +57,110 @@ function ParseJobLink() {
                 <p className="text-green-500">{value}</p>
               )}
             </div>
-          ))
-        }
-        </div>}
-
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 function App() {
-  const [fileData, setFileData] = useState<any>(null);
-  const [type, setType] = useState<string>("parseResume");
-  const { parseResume, strategy } = useLinkedInParser(fileData, type);
-  console.log("response App component:", parseResume);
+  const [fileData, setFileData] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string>('resume.pdf');
+  const [type, setType] = useState<string>('parseResume');
+  const savedRef = useRef(false);
+
+  const { parseResume, tempId, rateLimit } = useLinkedInParser(fileData, type);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  // After a successful parse, store tempId in sessionStorage so any login in this session
+  // will claim the already-uploaded resume via CallbackPage (avoids re-uploading base64).
+  useEffect(() => {
+    if (parseResume && !user) {
+      if (tempId) {
+        sessionStorage.setItem('pendingResume', JSON.stringify({ tempId, fileName }));
+      } else if (fileData) {
+        // Fallback: backend didn't return tempId (storage failure), store raw PDF
+        sessionStorage.setItem('pendingResume', JSON.stringify({ pdfBase64: fileData, fileName }));
+      }
+    }
+  }, [parseResume]); // only re-run when a new parse completes
+
+  // Clear stale pending data when user uploads a new file
+  useEffect(() => {
+    sessionStorage.removeItem('pendingResume');
+    savedRef.current = false;
+  }, [fileData]);
+
+  // When logged in and resume just parsed, save to DB (once per upload)
+  useEffect(() => {
+    if (parseResume && user && !savedRef.current) {
+      savedRef.current = true;
+      sessionStorage.removeItem('pendingResume');
+      if (tempId) {
+        // File already on server — just claim it
+        callEdgeFunction('claim-resume', { tempId }).catch(console.error);
+      } else if (fileData) {
+        // Fallback: server-side upload failed, send raw PDF
+        callEdgeFunction('upload-resume', { pdfBase64: fileData, fileName }).catch(console.error);
+      }
+    }
+  }, [parseResume, user, tempId, fileData, fileName]);
+
+  function handleDownload() {
+    if (!user) {
+      // sessionStorage already has the PDF from the parse useEffect above
+      navigate({ to: '/auth/login' });
+      return;
+    }
+    window.print();
+  }
+
+  function handleSignInForAccess() {
+    // Rate-limit case: no parse result yet, but we may have a fileData to re-upload after login.
+    // If a previous parse in this session succeeded and left a tempId, use it; otherwise store base64.
+    if (tempId) {
+      sessionStorage.setItem('pendingResume', JSON.stringify({ tempId, fileName }));
+    } else if (fileData) {
+      sessionStorage.setItem('pendingResume', JSON.stringify({ pdfBase64: fileData, fileName }));
+    }
+    navigate({ to: '/auth/login' });
+  }
 
   return (
-    <div className="flex flex-col min-h-screen w-screen">
-      <div className='text-3xl p-4 font-mono font-bold text-white bg-blue-400'>
-        RESUMIFY
-      </div>
-      <main className='flex flex-col flex-grow'>
-        <ParseJobLink />
-        <ParseLinkedInResume setFileData={setFileData} />
-        <button
-          onClick={() => setType("suggestStrategy")}
-          className="bg-blue-600 text-white px-4 py-2 rounded print:hidden"
-        >
-          Suggest Strategy
-        </button>
-        <ChooseTemplate data={parseResume} />
-        {/* {strategy && <SalaryStrategy text={strategy} />} */}
-      </main>
-      <footer className="text-center p-4 mt-4 bg-gray-200 text-gray-700">
-        &copy; 2026 Resumify. All rights reserved.
-      </footer>
-    </div>
-  )
-}
-export default App
+    <div className="flex flex-col flex-grow">
+      <ParseJobLink />
+      <ParseLinkedInResume setFileData={setFileData} setFileName={setFileName} />
 
+      {/* Rate limit banner — shown when unauthenticated user exhausts free parses */}
+      {rateLimit && !user && (
+        <div className="mx-6 mt-2 p-4 bg-amber-50 border border-amber-300 rounded-lg flex items-start justify-between gap-4">
+          <div>
+            <p className="font-semibold text-amber-800">Free limit reached</p>
+            <p className="text-sm text-amber-700 mt-0.5">{rateLimit.message}</p>
+            <p className="text-xs text-amber-500 mt-1">
+              Resets at {new Date(rateLimit.resetAt).toLocaleTimeString()}
+            </p>
+          </div>
+          <button
+            onClick={handleSignInForAccess}
+            className="shrink-0 bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
+          >
+            Sign In
+          </button>
+        </div>
+      )}
+
+      <button
+        onClick={() => setType('suggestStrategy')}
+        className="bg-blue-600 text-white px-4 py-2 rounded print:hidden mx-6 mt-2"
+      >
+        Suggest Strategy
+      </button>
+      <ChooseTemplate data={parseResume} onDownload={handleDownload} />
+    </div>
+  );
+}
+
+export default App;

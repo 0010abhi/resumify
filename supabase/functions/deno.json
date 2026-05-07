@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "npm:@google/genai": "npm:@google/genai@^1.34.0"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window"]
+  }
+}
